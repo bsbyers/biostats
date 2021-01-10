@@ -1,0 +1,140 @@
+---
+title: "EDA for Oura Ring Data"
+author: "Brandon Byers"
+date: "12/19/2020"
+output: word_document
+---
+
+#clear workspace & open packages
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Clear all variables, close all plots, and clear the console, load libraries
+
+#rm(list=ls()) #clears environment
+graphics.off()
+cat("\014")
+
+# A bunch of libraries that may be useful in this class
+library(ggplot2)
+library(polynom)
+library(tidyr)
+library(plotly)
+library(corrplot)
+library(reshape2)
+library(dplyr)
+library(plyr)
+library(tidyverse)
+library(rjson)
+
+setwd("~/Documents/My Stuff/My Health Data Analytics")
+
+#Oura Ring data up to 12/16/2020
+oura.all <- fromJSON(file="oura_2020-12-16T20-53-10.json")
+
+```
+
+
+```{r Clean Oura Sleep}
+sleep.o <- oura.all$sleep
+s.o <- as.data.frame(do.call(rbind, sleep.o))       # Convert list to data frame rows
+
+s.o <- print.data.frame(s.o, quote=FALSE)
+
+#need to unlist and remove from quotation marks the items
+for (i in 1:ncol(s.o)) {
+  s.o[,i] <- sapply(s.o[,i], paste, collapse = " ")
+}
+
+s.o <- print(s.o, quote = FALSE)
+s.o <- noquote(s.o)
+
+#changig class of data
+s.o$date_start <- as.Date(substr(s.o$bedtime_start, 1, 10))
+s.o$summary_date <- as.Date(s.o$summary_date)
+s.o$score <- as.numeric(s.o$score)
+s.o$hr_average <- as.numeric(s.o$hr_average)
+s.o$hr_lowest <- as.numeric(s.o$hr_lowest)
+s.o$deep <- as.numeric(s.o$deep)
+s.o$rem <- as.numeric(s.o$rem)
+s.o$awake <- as.numeric(s.o$awake)
+s.o$light <- as.numeric(s.o$light)
+
+
+#Look for NAs
+apply(is.na(s.o), 2, which)    #found 2 in the summary_date column... will remove
+s.o <- na.omit(s.o)
+
+#Adding columns
+s.o$duration_hr <- as.numeric(s.o$duration)/3600
+s.o$duration_min <- as.numeric(s.o$duration)/60
+```
+
+
+```{r Explore Oura Sleep plots}
+
+ggplot(s.o, aes(summary_date, score)) + geom_point() + geom_smooth() +
+  scale_x_date(date_breaks = "2 months" , breaks = 4, date_labels = "%b-%y") + 
+  scale_y_continuous(breaks=seq(0,100,10)) +
+  xlab('Date of Score') + ylab('Score') + ggtitle('Sleep Scores')
+
+ggplot(s.o, aes(summary_date, hr_average)) + geom_point() + geom_smooth() +
+  scale_x_date(date_breaks = "2 months" , breaks = 4, date_labels = "%b-%y") + 
+  scale_y_continuous(breaks=seq(20,100,5)) +
+  xlab('Date of Score') + ylab('Avg HR (bpm)') + ggtitle('HR Average Over Time')
+
+ggplot(s.o, aes(summary_date, hr_lowest)) + geom_point() + geom_smooth() +
+  scale_x_date(date_breaks = "2 months" , breaks = 4, date_labels = "%b-%y") + 
+  scale_y_continuous(breaks=seq(20,100,5)) +
+  xlab('Date of Score') + ylab('Lowest HR (bpm)') + ggtitle('Lowest HR Over Time')
+
+ggplot(s.o, aes(duration_hr)) +
+  geom_histogram(bins = 30)
+
+## duration of sleep over time
+ggplot(s.o, aes(summary_date, duration_hr)) + 
+    geom_point(aes(col = score), size = 1.5) + 
+    geom_smooth(method = "loess", col = "black") +
+  scale_color_gradient2(high = "dark green", low = "red", midpoint = 65) +
+    ylab("Duration of Sleep (hours)") + xlab("Date") +
+    ggtitle("Duration of Sleep over Time") +
+    theme_bw()
+
+#I want to break the sleep stages up into long-form for better figure
+sleep.stage <- reshape2::melt(s.o[,c("summary_date", "rem", "deep", "light")], id.var='summary_date')
+sleep.stage$value <- sleep.stage$value/60
+
+ggplot(sleep.stage, aes(summary_date, value, col = variable)) + 
+  geom_line() + 
+  geom_vline(xintercept=as.numeric(sleep.stage$summary_date[390]), linetype="dashed", color = "red") +
+  xlab('Dates') + ylab('Duration of Sleep Type (min)') + ggtitle('Duration of Sleep Stages w/ Lockdown Date')
+```
+
+
+```{r Clean Oura Activity}
+sleep.a <- oura.all$activity
+
+#this method of converting lists into dataframe causes issues because oura added a new variable in the middle of collection AND every observation was duplicated for the "met_1min" variable, which i chose to delete
+library(data.table)
+a.o <- rbindlist(sleep.a, fill=TRUE)
+a.o <- a.o[,!13]
+a.o <- a.o[!duplicated(a.o)]
+
+#converting data formats properly
+a.o$summary_date <- as.Date(a.o$summary_date)
+a.o$score <- as.numeric(a.o$score)
+
+```
+
+```{r Explore Oura Activity Plots}
+
+ggplot(a.o, aes(summary_date, score)) + geom_point() + geom_smooth() +
+  scale_x_date(date_breaks = "2 months" , breaks = 4, date_labels = "%b-%y") + 
+  scale_y_continuous(breaks=seq(0,100,10)) +
+  xlab('Date of Score') + ylab('Score') + ggtitle('Activity Scores w/ Lockdown Date') + 
+  geom_vline(xintercept=as.numeric(sleep.stage$summary_date[390]), linetype="dashed", color = "red")
+
+```
+
+
+#end

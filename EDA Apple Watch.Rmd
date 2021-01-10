@@ -1,0 +1,138 @@
+---
+title: "EDA for Oura and Apple Watch"
+author: "Brandon Byers"
+date: "9/25/2020"
+output: word_document
+---
+
+#clear workspace & open packages
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Clear all variables, close all plots, and clear the console, load libraries
+
+#rm(list=ls()) #clears environment
+graphics.off()
+cat("\014")
+
+# A bunch of libraries that may be useful in this class
+library(ggplot2)
+library(polynom)
+library(tidyr)
+library(plotly)
+library(corrplot)
+library(reshape2)
+library(dplyr)
+library(plyr)
+library(tidyverse)
+library(rjson)
+
+setwd("~/Documents/My Stuff/My Health Data Analytics")
+
+#Oura Ring data up to 12/16/2020
+#oura.all <- fromJSON(file="oura_2020-12-16T20-53-10.json")
+
+
+# Get some Apple Health data an put the export.xml file into your directory
+library("XML")
+library("methods")
+library("tidyverse")
+library("lubridate")
+
+xml <- xmlParse(paste("export.xml"))
+
+df_workout <-  XML:::xmlAttrsToDataFrame(xml["//Workout"])[c(1:2, 4, 6, 12)]   #this only includes useful variables
+df_record <-  XML:::xmlAttrsToDataFrame(xml["//Record"]) [c(1,6,8)]  #very slow to import
+
+```
+
+
+
+
+```{r Explore Apple Exercise Data}
+#helpful blog  https://www.mitchhenderson.org/2020/05/visualising-data-measured-from-activity-watches/ 
+
+df_workout$duration <- as.numeric(df_workout$duration)
+df_workout$totalEnergyBurned <- as.numeric(df_workout$totalEnergyBurned)
+df_workout$endDate = as.Date(df_workout$endDate)
+
+min <- as.Date("2020-01-01")
+max <- as.Date(NA)
+
+ggplot(df_workout, aes(x= endDate, y = duration)) +
+    geom_bar(stat="identity", fill='#5ab4ac')+
+    labs(title = "Duration of Workouts",
+           subtitle = "dashed line is when I got an apple watch",
+           x = "Date",
+           y = "minutes") +
+    scale_x_date(date_breaks = "month", date_labels = "%b %d", limits = c(min, max)) + 
+    scale_y_continuous(expand = c(0, 0)) +
+    geom_vline(xintercept=as.numeric(as.Date("2020-08-18")), linetype="dashed", color = "red") +
+    theme_minimal() +
+    theme(panel.grid.minor = element_blank(),
+        panel.grid.major.x = element_blank(),
+        axis.line.x = element_line(colour = "black", size = 1),
+        axis.title = element_text(face = "bold"),
+        plot.title = element_text(face = "bold"))
+
+#not useful yet...
+#ggplot(df_record, aes(x= Date, y = 'AppleExerciseTime')) +
+    geom_bar(stat="identity", fill='#5ab4ac')+
+    labs(title = "Duration of Workouts",
+           subtitle = "dashed line is when I got an apple watch",
+           x = "Date",
+           y = "minutes") +
+    #scale_x_date(date_breaks = "month", date_labels = "%b %d", limits = c(min, max)) + 
+    #scale_y_continuous(expand = c(0, 0)) +
+    geom_vline(xintercept=as.numeric(as.Date("2020-08-18")), linetype="dashed", color = "red") +
+    theme_minimal() +
+    theme(panel.grid.minor = element_blank(),
+        panel.grid.major.x = element_blank(),
+        axis.line.x = element_line(colour = "black", size = 1),
+        axis.title = element_text(face = "bold"),
+        plot.title = element_text(face = "bold"))
+```
+
+
+```{r Apple General Activity}
+#Another helpful blog:   https://taraskaduk.com/posts/2019-03-23-apple-health/
+
+#Cleaning data
+df_record$type = str_remove(df_record$type, "HKQuantityTypeIdentifier")
+df_record$value = as.numeric(as.character(df_record$value))
+df_record$Date = as.Date.character(df_record$startDate)
+df_record$weekday = wday(df_record$Date) # Day of week
+df_record$hour = hour(df_record$startDate) #%>% # Need to use the factor date
+
+df_record.step <- df_record[df_record$type == 'StepCount',]
+
+df_record.step2 <- df_record.step %>%   
+   filter(type == 'StepCount' & Date >= "2020-03-23") %>%
+   #group_by(Date, weekday, hour) %>%  # Summarise by date, weekday and hour
+   #summarise(value = sum(value)) %>% # Sum steps over ^^
+   #group_by(weekday, hour) %>% # Now summarise by weekday and hour  
+   #summarise(value = mean(value)) #%>% # Take mean steps over ^^
+   filter(between(hour,6,21)) # Filtering to include between 6am - 9pm
+ 
+ggplot(df_record.step2, aes(x = hour, y = weekday,  fill = value)) +
+  geom_tile(col = 'grey40') +
+  scale_fill_continuous(labels = scales::comma, low = 'grey95', high = '#008FD5') +
+  scale_x_continuous(
+    breaks = c(6, 9, 12, 15, 18, 21),
+    label = c("6 AM", "9 AM", "Midday", "3PM", "6 PM", "9 PM")) +
+  scale_y_reverse(
+    breaks = c(1, 2, 3, 4, 5, 6, 7),
+    label = c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")) +
+  labs(
+    title = "Step count heatmap by hour by day",
+    subtitle = "Data after shelter in place in March 2020 and likely shows days/times that I went on a run",
+    y = NULL, x = NULL) +
+  guides(fill = FALSE) +
+  coord_equal() +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank(), plot.title = element_text(face = "bold"))
+```
+
+
+
+#end
